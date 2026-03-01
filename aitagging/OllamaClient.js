@@ -156,7 +156,7 @@ class OllamaClient {
                         console.log(`Ollama model "${this.model}" is available.`);
                         this.model = modelInfo.name; // update to actual model name from response, which may include version or other details
                         modelFound = true;
-                        // load the model and set keepalive to -1 to keep it in memory.
+                        // load the model and set keep_alive to -1 to keep it in memory.
                         // but this slows down the app start!
                         url = `${normalizedBase}/api/generate`;
                         await fetch(url, {
@@ -406,7 +406,7 @@ class OllamaClient {
         const payload = {
             model: this.model,
             prompt: prompt,
-            keepalive: -1, // this does not work here. Reason is unknown.
+            keep_alive: -1,
             images: [encodedImage],
             format: 'json',
             stream: this.config.generation.stream ?? false,
@@ -432,9 +432,14 @@ class OllamaClient {
             if (data.response) {
                 // sanitize the response data to a valid JSON.
                 console.log("Antwort von Ollama: ", data.response);
-                // TODO: use the ollama model now to transform the response to the expected JSON format.
-                const sanitizedData = this.validateAndSanitizeMetadataJSON(data.response);
+                let sanitizedData = this.validateAndSanitizeMetadataJSON(data.response);
+                
+                if ( !sanitizedData ) {
+                    sanitizedData = await this.ollamaTransformText(url, payload, data.response)
+                    console.log("Transformierte Antwort von Ollama: ", sanitizedData);
+                }
                 return { data: sanitizedData, success: true };
+
             } else {
                 console.log("Unerwartetes Antwortformat von Ollama:");
                 console.log(data);
@@ -444,6 +449,36 @@ class OllamaClient {
             console.log(`Fehler bei der Anfrage an Ollama: ${e}`);
             return { success: false, error: e && e.message ? e.message : e };
         }
+    }
+
+    async ollamaTransformText(url, payload, firstprompt) {
+        let prompt = `Convert the following TEXT into valid JSON, where 'keywords' must be a comma-separated list of individual keywords. 'title' and 'description' may only contain plain text. Output only the JSON, no explanations. Return TEXT directly if the format is already correct. Do not translate.
+        Output a JSON object in the following format (exactly this format as an example):
+        {
+        "title": "...",
+        "description": "...",
+        "keywords": "keyword1, keyword2, ...."
+        }
+        ---- TEXT ----
+        `;
+
+        prompt += firstprompt;
+        payload.prompt = prompt;
+        // remove unsed keys from object payload
+        if (payload.images) delete payload.images;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            timeout: this.timeout
+        });
+
+        if (!response.ok) return firstprompt;
+        const data = await response.json();
+        if ( !data.response ) return firstprompt;
+        let result = JSON.parse(data.response);
+        return result;
     }
 }
 

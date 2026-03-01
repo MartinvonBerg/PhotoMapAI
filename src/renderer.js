@@ -20,7 +20,7 @@ import { showTrackLogStateError } from '../js/leftSidebarHandler.js';
   // TODO: change from electron-packager to electron-builder ( siehe Anleitung.txt)
   // TODO: Possible Security Issue : Cross-site scripting (XSS) via untrusted input in innerHTML, outerHTML, document.write in browser. Especially where translated data is loaded from json Files and is not checked.
   // TODO: allow adding Tags even if 'multiple' is selected like it is done in LR 6.14.
-// TODO: use the ollama model now to transform the response to the expected JSON format.
+// TODO: rotate images again!
 
 let settings = {};
 let filteredImages = [];
