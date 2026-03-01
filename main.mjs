@@ -667,7 +667,7 @@ async function readImagesFromFolder(folderPath, extensions) {
                 if ( ollamaClient  ) {
                   longEdge = ollamaClient.getPreferredLongEdge();
                 }
-                thumbnailPath = await resizeImage(filePath, thumbnailPathTmp, { longEdge: longEdge });
+                thumbnailPath = await resizeImage( metadata, filePath, thumbnailPathTmp, { longEdge: longEdge });
                 if ( !thumbnailPath) thumbnailPath = filePath;
               }
               
@@ -1163,13 +1163,15 @@ async function rotateThumbnail(metadata, filePath, thumbPathTmp) {
  * @param {ResizeConfig} [config]
  * @returns {Promise:Boolean}
  */
-async function resizeImage(inputFile, outputFile, config = {}) {
+async function resizeImage(metadata, inputFile, outputFile, config = {}) {
   const {
     longEdge = 896,
     jpegQuality = 85,
     flattenBg = "#ffffff",
     limitInputPixels,
   } = config;
+
+  const orientation = metadata.Orientation || 1; // default = normal
 
   if ( !sharpAvailable) return false;
 
@@ -1211,14 +1213,41 @@ async function resizeImage(inputFile, outputFile, config = {}) {
     pipeline = pipeline.flatten({ background: flattenBg });
   }
 
-  await pipeline
+  let image = await pipeline
     .jpeg({
       quality: jpegQuality,
       mozjpeg: true,
       chromaSubsampling: "4:2:0",
-    })
-    .toFile(outputFile);
+    });
+    
+  switch (orientation) {
+    case 3:
+      image = image.rotate(180);
+      break;
+    case 6:
+      image = image.rotate(90);
+      break;
+    case 8:
+      image = image.rotate(270);
+      break;
+    case 2:
+      image = image.flop(); // horizontal spiegeln
+      break;
+    case 4:
+      image = image.flip(); // vertikal spiegeln
+      break;
+    case 5:
+      image = image.rotate(90).flop();
+      break;
+    case 7:
+      image = image.rotate(270).flop();
+      break;
+    default:
+      // 1 = normal, keine Änderung
+      break;
+  } 
 
+  await image.toFile(outputFile);
   return outputFile;
 }
 
