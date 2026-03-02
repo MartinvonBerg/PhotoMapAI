@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 
 /**
  * Loads user settings from a JSON file.
@@ -40,4 +41,23 @@ export function loadSettings(appRoot, settingsFilePath) {
 export function saveSettings(settingsFilePath, settings) {
   //console.log('Saving settings to', settingsFilePath);
   fs.writeFileSync(settingsFilePath, JSON.stringify(settings, null, 2));
+}
+
+export function openSettingsInSystemEditor(settingsPath) {
+
+  // check if notepad++ is installed
+  if (fs.existsSync("C:\\Program Files\\Notepad++\\notepad++.exe")) {
+    spawn('C:\\Program Files\\Notepad++\\notepad++.exe', [settingsPath], { detached: true, stdio: 'ignore' }).unref();
+    return;
+  }
+  
+  if (process.platform === 'win32') {
+    // Win11 Notepad (notepad.exe) – unabhängig von .json-Default-App
+    spawn('notepad.exe', [settingsPath], { detached: true, stdio: 'ignore' }).unref();
+    return;
+  }
+
+  // macOS/Linux: hier könntest du "open"/"xdg-open" nehmen oder bei shell.openPath bleiben
+  // (öffnet dann jeweils die Default-App)
+  dialog.showMessageBox({ message: `Auf ${process.platform} aktuell nicht fest verdrahtet.` });
 }

@@ -80,6 +80,15 @@
   "trackLogRunButton": "Tracklog starten",
   "trackLogAbortButton": "Abbrechen",
   "trackLogRunExiftoolHeader": "Exiftool auf gefilterte Bilder mit Zeitabweichung anwenden",
+  "Tags": "Schlagwörter",
+  "Open" : "Öffne",
+  "Could not open file": "Datei konnte nicht geoeffnet werden",
   "GeoTagComplete" : "Geotagging abgeschlossen",
-  "Tags": "Schlagwörter"
+  "Geolocation" : "Geo Location",
+  "Set" : "Setzen",
+  "Copy" : "Kopieren",
+  "Paste" : "Einfügen",
+  "Clear" : "Löschen"
+  
+  
 }  

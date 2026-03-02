@@ -80,6 +80,13 @@
   "trackLogRunButton": "Start Tracklog",
   "trackLogAbortButton": "Abort",
   "trackLogRunExiftoolHeader": "Run Exiftool for filtered Images and with Time-Diff",
+  "Tags": "Tags",
+  "Open" : "Open",
+  "Could not open file": "Could not open file",
   "GeoTagComplete" : "Geotagging completed",
-  "Tags": "Tags"
+  "Geolocation" : "Geo Location",
+  "Set" : "Set",
+  "Copy" : "Copy",
+  "Paste" : "Paste",
+  "Clear" : "Clear"
 }

@@ -8,7 +8,7 @@ import { exiftool } from 'exiftool-vendored';
 
 import { sortImagesByCaptureTime } from './js/imageHelper.js';
 import { sanitize } from './js/generalHelpers.js';
-import { loadSettings, saveSettings } from './js/settingsHelper.js';
+import { loadSettings, saveSettings, openSettingsInSystemEditor } from './js/settingsHelper.js';
 import { isValidLocation } from './js/ExifHandler.js';
 import { OllamaClient } from './aitagging/OllamaClient.js';
 import { reverseGeocodeToXmp } from './js/nominatim.js'
@@ -76,6 +76,9 @@ let exiftoolAvailable = false;
 const appRoot = app.getAppPath();
 const localesPath = path.join(appRoot, 'locales');
 const settingsFilePath = path.join(app.getPath('userData'), 'user-settings.json');
+const ollamaConfigFilePath = path.join(app.getPath('userData'), 'ollama_config.json');
+const ollamaPromptFilePath = path.join(app.getPath('userData'), 'prompt.txt');
+const logFilePath = path.join(app.getPath('userData'), 'geotagger.log');
 
 // Settings direkt beim Start laden
 try {
@@ -191,7 +194,63 @@ function setupMenu(t) {
 
                 reloadImageData(settings);
               }
-          }, 
+          },
+          {
+            label: t('Open') + ' user-settings.json',
+            click: async () => {
+              try {
+                const result = openSettingsInSystemEditor(settingsFilePath);
+                // openPath gibt einen leeren String zurück, wenn ok; sonst Fehlermeldung als Text
+                if (result) {
+                  dialog.showErrorBox(t('Could not open file'), result);
+                }
+              } catch (e) {
+                dialog.showErrorBox(t('error'), String(e));
+              }
+            }
+          },
+          {
+            label: t('Open') + '  ollama-config.json',
+            click: async () => {
+              try {
+                const result = openSettingsInSystemEditor(ollamaConfigFilePath);
+                // openPath gibt einen leeren String zurück, wenn ok; sonst Fehlermeldung als Text
+                if (result) {
+                  dialog.showErrorBox(t('Could not open file'), result);
+                }
+              } catch (e) {
+                dialog.showErrorBox(t('error'), String(e));
+              }
+            }
+          },
+          {
+            label: t('Open') + ' prompt.txt',
+            click: async () => {
+              try {
+                const result = openSettingsInSystemEditor(ollamaPromptFilePath);
+                // openPath gibt einen leeren String zurück, wenn ok; sonst Fehlermeldung als Text
+                if (result) {
+                  dialog.showErrorBox(t('Could not open file'), result);
+                }
+              } catch (e) {
+                dialog.showErrorBox(t('error'), String(e));
+              }
+            }
+          },
+          {
+            label: t('Open') + ' geotagger.log',
+            click: async () => {
+              try {
+                const result = openSettingsInSystemEditor(logFilePath);
+                // openPath gibt einen leeren String zurück, wenn ok; sonst Fehlermeldung als Text
+                if (result) {
+                  dialog.showErrorBox(t('Could not open file'), result);
+                }
+              } catch (e) {
+                dialog.showErrorBox(t, String(e));
+              }
+            }
+          },
           { label: t('quit'), role: 'quit' }  
         ]    
       },  
