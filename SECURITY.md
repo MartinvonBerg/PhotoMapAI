@@ -7,7 +7,7 @@ currently being supported with security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 2.0.0   | :white_check_mark: |
+| 2.1.0   | :white_check_mark: |
 
 Security Scanning was done by Sourcery for V1.0.0. There were three issues reported with high Severity (80). These are relevant only if you want to hack yourself. In other words: Don't use this App in productive Environments!
 

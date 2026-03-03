@@ -6,7 +6,7 @@
  *  This module provides functions to handle the thumbnail bar functionality in the application.
  *  It includes generating thumbnails, handling thumbnail selection events, and updating thumbnail statuses.
  * @author Martin von Berg
- * @version 2.0.0
+ * @version 2.1.0
  * @license MIT
  * @todo multiselect of images in thumbnail bar with https://github.com/simonwep/viselect. Currently it is a simple multi-select with shift-click and ranges with no gaps are supported.
  */

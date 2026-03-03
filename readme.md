@@ -31,7 +31,7 @@ you to:
 This tool is not a professional application. There are other tools that
 serve the same purpose:
 
--   PhotoLocator - https://github.com/meesoft/PhotoLocator - OSS, Windows only (currently my favorite)
+-   PhotoLocator - https://github.com/meesoft/PhotoLocator - OSS, Windows only (currently my favourite)
 -   darktable - https://www.darktable.org/ - OSS
 -   GeoTagNinja - https://github.com/nemethviktor/GeoTagNinja - OSS, Windows only
 -   ExifToolGui - https://github.com/FrankBijnen/ExifToolGui - OSS, Great Tool!!! Makes this one here quite useless.
@@ -352,7 +352,7 @@ at the end! Deleting title and description is currently not possible.
 
 ------------------------------------------------------------------------
 
-### Behavior with Multiple Selection
+### Behaviour with Multiple Selection
 
 -   Different values → display `multiple`
 -   Changes can be applied to all selected images
@@ -393,7 +393,7 @@ IPC events:
 
 ### Exit with Unsaved Changes
 
-Dialog options:
+Dialogue options:
 
 -   **Save**
 
@@ -452,7 +452,7 @@ For example for:
 -   ExifTool execution errors
 -   File/path issues
 
-### Typical Error Dialogs
+### Typical Error Dialogues
 
 -   `GpxFileNotFound`
 -   `ImageFileNotFound`
@@ -476,8 +476,18 @@ For example for:
 
 ## Changelog
 
+V2.1.0 : 
+- Ollama : reload `ollama-config.json`, `prompt.txt` on every generate. Sanitize these files. Use scaled image with 'LongEdge' as Parameter (Default: 896px). Improve JSON-response parsing. Minor Bugfixes.
+- Update translation files (DE, EN) and check Sanitation (done by i18next for XSS)
+- Added Menu point to open all used settings Files from Menu
+- Move to last active image after saving and reloading of Data / images.
+- Changed GPSImageDirection Input to 0° ... 359.99° as specified by EXIF
+- Update UI Input for Keywords in Right Sidebar and added the feature to add identical Tags to images with different Keywords like in LR 6.14.
+
+---------
+
 V2.0.0 : This release introduces AI-assisted metadata generation, reverse geocoding, copy/paste metadata helpers, and several quality-of-life improvements.
-- Added AI Metadata-Generation with API to Ollama using Model Gemma3:12b with best results. Adding ollama_config.json and prompt Template which may be changed by the user to his/her wisches. Some Translations still missing for that part. Just install Ollama and download the model gemma3:12b or any other you like.
+- Added AI Metadata-Generation with API to Ollama using Model Gemma3:12b with best results. Adding ollama_config.json and prompt Template which may be changed by the user to his/her wishes. Some Translations still missing for that part. Just install Ollama and download the model gemma3:12b or any other you like.
 - Added Reverse Geocoding with Nominatim.
 - Updated storage and Copy of settings / config / prompt on first Run.
 - Some code rework, bug fixes and refactoring in Helpers.
@@ -486,7 +496,7 @@ V2.0.0 : This release introduces AI-assisted metadata generation, reverse geocod
 
 V1.4.0 : Bug-Fix in Left Sidebar and its Handling, Clean-up Build Config and process, Add Config to debug main.mjs.
 
-V1.3.0 : Update and standardize Right Sidebar Input, Bug Fixes in main.js. Fix logging in Distri, checking sharp non-availability (still not solved)
+V1.3.0 : Update and standardize Right Sidebar Input, Bug Fixes in main.js. Fix logging in Distribution, checking sharp non-availability (still not solved)
 
 V1.2.0 : Refactor complete code to ESM and add / change projects defs to reduce Distribution size (shrinked from 922 MB to 422 MB unpacked)
 

@@ -1,6 +1,6 @@
 {
   "name": "gpx-tagger",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "An Electron application to add GPX metadata to image files",
   "main": "build/main.bundle.cjs",
   "author": "Dr. Martin von Berg",
@@ -20,9 +20,9 @@
     "install-app-deps": "cd app && npm install --omit=dev",
     "prepare-app": "node scripts/prepare-app.js",
     "finalize-app": "node scripts/finalize-app-win.js",
-    "package": "npm run prodbuild && npm run prepare-app && npm run install-app-deps && npx electron-packager ./app GpxTaggerApp --platform=win32  --arch=x64 --out=dist       --overwrite --app-version=2.0.0 --app-copyright=\"Copyright (c) 2026 Dr. Martin von Berg\" --win32metadata.CompanyName=\"Dr. Martin von Berg\" && npm run finalize-app",
-    "package:linux": "npm run prodbuild && npm run prepare-app && npm run install-app-deps && npx electron-packager ./app GpxTaggerApp --platform=linux  --arch=x64 --out=dist-linux --overwrite --app-version=2.0.0 && npm run finalize-app",
-    "package:mac": "npm run prodbuild && npm run prepare-app && npm run install-app-deps && npx electron-packager ./app GpxTaggerApp --platform=darwin --arch=x64 --out=dist-maxOS --overwrite --app-version=2.0.0 && npm run finalize-app"
+    "package": "npm run prodbuild && npm run prepare-app && npm run install-app-deps && npx electron-packager ./app GpxTaggerApp --platform=win32  --arch=x64 --out=dist --overwrite --app-version=2.1.0 --app-copyright=\"Copyright (c) 2026 Dr. Martin von Berg\" --win32metadata.CompanyName=\"Dr. Martin von Berg\" && npm run finalize-app",
+    "package:linux": "npm run prodbuild && npm run prepare-app && npm run install-app-deps && npx electron-packager ./app GpxTaggerApp --platform=linux  --arch=x64 --out=dist-linux --overwrite --app-version=2.1.0 && npm run finalize-app",
+    "package:mac": "npm run prodbuild && npm run prepare-app && npm run install-app-deps && npx electron-packager ./app GpxTaggerApp --platform=darwin --arch=x64 --out=dist-maxOS --overwrite --app-version=2.1.0 && npm run finalize-app"
   },
   "devDependencies": {
     "@babel/core": "*",
