@@ -204,7 +204,7 @@ function sanitizeTxtFile(raw, opts = {}) {
     s = s.replace(/\n+$/g, "\n");     // viele End-Newlines auf genau eine reduzieren
   }
 
-  return s;
+  return sanitize(s);
 }
 
 function normalizeFileString(input) {

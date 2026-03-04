@@ -6,10 +6,6 @@
   "author": "Dr. Martin von Berg",
   "copyright": "Copyright (c) 2026 Dr. Martin von Berg",
   "license": "GPL-2.0",
-  "jest": {
-    "testEnvironment": "node",
-    "transform": {}
-  },
   "scripts": {
     "start": "electron .",
     "test": "node scripts/jest-runner.js",

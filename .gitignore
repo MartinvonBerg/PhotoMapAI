@@ -16,3 +16,4 @@ app*
 !prompt*.txt
 report/*
 stichwörter*
+coverage*
