@@ -282,96 +282,275 @@ class OllamaClient {
     }
 
     /**
-     * Validates and sanitizes a JSON string response object for XMP metadata storage purposes.
-     * Expected format:
-     * {
-     *   "Title": "...",
-     *   "Description": "...",
-     *   "Keywords": "..."
-     * }
+     * Validates and sanitizes a JSON response against a schema-like format object.
+     *
+     * Supported schema subset:
+     * - type: "object" | "string" | "array" | "number" | "integer" | "boolean" | "null"
+     * - properties
+     * - required
+     * - additionalProperties
+     * - items
+     * - minItems
+     * - maxItems
      *
      * @param {string} input
-     * @returns {{Title: string, Description: string, Keywords: string} | null}
+     * @param {object} format
+     * @param {{ extractJson?: boolean }} [options]
+     * @returns {object | null}
      */
-    validateAndSanitizeMetadataJSON(input) {
+    validateAndSanitizeMetadataJSON(input, format, options = {}) {
+        const { extractJson = true } = options;
+
         if (typeof input !== "string") {
             return null;
         }
-        input = this.extractJsonFromResponse(input);
 
-        // 1. Strict JSON Parse
-        let parsed;
-        try {
-            parsed = JSON.parse(input);
-        } catch {
-            return null;
-        }
-
-        // 2. Basic structural validation
         if (
-            typeof parsed !== "object" ||
-            parsed === null ||
-            Array.isArray(parsed)
+            !format ||
+            typeof format !== "object" ||
+            Array.isArray(format) ||
+            format.type !== "object" ||
+            typeof format.properties !== "object" ||
+            format.properties === null ||
+            Array.isArray(format.properties)
         ) {
             return null;
         }
 
-        // 3. Prototype Pollution Protection
-        // Ensure plain object
-        if (Object.getPrototypeOf(parsed) !== Object.prototype) {
-            return null;
-        }
+        let jsonText = input.trim();
 
-        const allowedKeys = ["title", "description", "keywords"];
-
-        const keys = Object.keys(parsed);
-
-        // 4. No additional or missing properties
-        if (keys.length !== allowedKeys.length) {
-            return null;
-        }
-
-        for (const key of keys) {
-            if (!allowedKeys.includes(key)) {
-            return null;
+        if (extractJson) {
+            jsonText = this.extractJsonFromResponse(jsonText);
+            if (jsonText === null) {
+                return null;
             }
         }
 
-        // 5. Type checking + sanitization
+        let parsed;
+        try {
+            parsed = JSON.parse(jsonText);
+        } catch {
+            return null;
+        }
+
+        return this.validateBySchema(parsed, format);
+    }
+
+    /**
+     * Validates a value recursively against a schema-like definition
+     * and returns a sanitized clone, or null on failure.
+     *
+     * @param {*} value
+     * @param {object} schema
+     * @returns {* | null}
+     */
+    validateBySchema(value, schema) {
+        if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+            return null;
+        }
+
+        switch (schema.type) {
+            case "object":
+                return this.validateObject(value, schema);
+
+            case "string":
+                if (typeof value !== "string") {
+                    return null;
+                }
+                return sanitizeString(value);
+
+            case "number":
+                if (typeof value !== "number" || !Number.isFinite(value)) {
+                    return null;
+                }
+                return value;
+
+            case "integer":
+                if (!Number.isInteger(value)) {
+                    return null;
+                }
+                return value;
+
+            case "boolean":
+                if (typeof value !== "boolean") {
+                    return null;
+                }
+                return value;
+
+            case "null":
+                return value === null ? null : null;
+
+            case "array":
+                return this.validateArray(value, schema);
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * @param {*} value
+     * @param {object} schema
+     * @returns {object | null}
+     */
+    validateObject(value, schema) {
+        if (
+            typeof value !== "object" ||
+            value === null ||
+            Array.isArray(value)
+        ) {
+            return null;
+        }
+
+        // Prototype pollution protection: allow only plain objects
+        if (Object.getPrototypeOf(value) !== Object.prototype) {
+            return null;
+        }
+
+        const properties = schema.properties || {};
+        const required = Array.isArray(schema.required) ? schema.required : [];
+        const additionalProperties = schema.additionalProperties === true;
+
+        const keys = Object.keys(value);
+
+        // Required fields must exist
+        for (const key of required) {
+            if (!Object.prototype.hasOwnProperty.call(value, key)) {
+                return null;
+            }
+        }
+
+        // Reject unknown fields unless explicitly allowed
+        if (!additionalProperties) {
+            for (const key of keys) {
+                if (!Object.prototype.hasOwnProperty.call(properties, key)) {
+                    return null;
+                }
+            }
+        }
+
         const sanitized = Object.create(null);
 
-        for (const key of allowedKeys) {
-            const value = parsed[key];
-
-            if (typeof value !== "string") {
-            return null;
+        // Validate only declared properties
+        for (const [key, propertySchema] of Object.entries(properties)) {
+            if (!Object.prototype.hasOwnProperty.call(value, key)) {
+                continue; // optional field
             }
 
-            sanitized[key] = sanitizeString(value, key);
+            const validated = this.validateBySchema(value[key], propertySchema);
+            if (validated === null && propertySchema.type !== "null") {
+                return null;
+            }
+
+            sanitized[key] = validated;
+        }
+
+        // If additionalProperties=true and you want to preserve them,
+        // you'd need extra logic here. Right now they are ignored unless false.
+        // For strict metadata handling this is usually preferable.
+        return sanitized;
+    }
+
+    /**
+     * @param {*} value
+     * @param {object} schema
+     * @returns {Array | null}
+     */
+    validateArray(value, schema) {
+        if (!Array.isArray(value)) {
+            return null;
+        }
+
+        if (
+            typeof schema.minItems === "number" &&
+            value.length < schema.minItems
+        ) {
+            return null;
+        }
+
+        if (
+            typeof schema.maxItems === "number" &&
+            value.length > schema.maxItems
+        ) {
+            return null;
+        }
+
+        const itemSchema = schema.items;
+        if (!itemSchema || typeof itemSchema !== "object") {
+            return null;
+        }
+
+        const sanitized = [];
+
+        for (const item of value) {
+            const validated = this.validateBySchema(item, itemSchema);
+            if (validated === null && itemSchema.type !== "null") {
+                return null;
+            }
+            sanitized.push(validated);
         }
 
         return sanitized;
     }
 
     /**
-     * Extrahiert JSON aus einer LLM-Antwort, entfernt Markdown-Code-Fences
-     * und parsed das Ergebnis sicher.
+     * Extracts the first top-level JSON object from an LLM response.
+     * Removes Markdown code fences first.
+     *
+     * Returns null instead of throwing.
+     *
+     * @param {string} responseText
+     * @returns {string | null}
      */
     extractJsonFromResponse(responseText) {
-        // 1. Entferne ```json ... ``` oder ``` ... ```
-        let cleaned = responseText.replace(/```json\s*/g, "");
-        cleaned = cleaned.replace(/```/g, "");
-        cleaned = cleaned.trim();
-        
-        // 2. Falls noch Text vor/nach dem JSON steht → nur {...} extrahieren
-        const match = cleaned.match(/\{[\s\S]*\}/);
-        if (!match) {
-            throw new Error("Kein gültiges JSON-Objekt gefunden.");
+        if (typeof responseText !== "string") {
+            return null;
         }
-        
-        const jsonStr = match[0];
-        
-        return jsonStr;
+
+        let cleaned = responseText
+            .replace(/```json\s*/gi, "")
+            .replace(/```/g, "")
+            .trim();
+
+        const start = cleaned.indexOf("{");
+        if (start === -1) {
+            return null;
+        }
+
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+
+        for (let i = start; i < cleaned.length; i++) {
+            const ch = cleaned[i];
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (ch === "\\") {
+                    escaped = true;
+                } else if (ch === '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (ch === '"') {
+                inString = true;
+                continue;
+            }
+
+            if (ch === "{") {
+                depth++;
+            } else if (ch === "}") {
+                depth--;
+                if (depth === 0) {
+                    return cleaned.slice(start, i + 1);
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -393,6 +572,7 @@ class OllamaClient {
 
         const prompt = this.preparePrompt(this.prompt, captureDate, imageMeta, geoLocationInfo);  
         const url = `${this.baseUrl}/api/generate`;
+        let format = {};
 
         let encodedImage;
         try {
@@ -403,19 +583,56 @@ class OllamaClient {
             return { success: false, error: `Fehler beim Laden des Bildes: ${e}` };
         }
 
+        if ( this.config.generation.format ) {
+            format = this.config.generation.format;
+        } else {
+            format = {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    minItems: 10,
+                    maxItems: 15
+                }
+                },
+                "required": [
+                    "title",
+                    "description",
+                    "keywords"
+                ],
+                additionalProperties: false
+            }
+        }
+        
+
         const payload = {
             model: this.model,
             prompt: prompt,
-            keep_alive: -1,
+            // suffix: '',
             images: [encodedImage],
-            format: 'json',
-            stream: this.config.generation.stream ?? false,
+            format: format,
             options: {
                 temperature: this.config.generation.temperature ?? 0.1,
                 top_p: this.config.generation.top_p ?? 0.8,
                 seed: this.config.generation.seed ?? 42,
-                top_k: this.config.generation.top_k ?? 1
-            }
+                top_k: this.config.generation.top_k ?? 1,
+                num_ctx: 4096
+            },
+            // system: '',
+            // template: '',
+            // context: [],
+            stream: this.config.generation.stream ?? false,
+            // raw: false,
+            keep_alive: -1,
         };
 
         try {
@@ -429,15 +646,18 @@ class OllamaClient {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
+            if (data.response === '' && data.thinking ) {
+                data.response = data.thinking;
+            }
+
             if (data.response) {
                 // sanitize the response data to a valid JSON.
                 console.log("Antwort von Ollama: ", data.response);
-                let sanitizedData = this.validateAndSanitizeMetadataJSON(data.response);
-                
-                if ( !sanitizedData ) {
-                    sanitizedData = await this.ollamaTransformText(url, payload, data.response)
-                    console.log("Transformierte Antwort von Ollama: ", sanitizedData);
+                let sanitizedData = this.validateAndSanitizeMetadataJSON(data.response, format, { extractJson: true });
+                if (sanitizedData.keywords) {
+                    sanitizedData.keywords = sanitizedData.keywords.join(', ');
                 }
+                
                 return { data: sanitizedData, success: true };
 
             } else {
@@ -448,36 +668,6 @@ class OllamaClient {
             console.log(`Fehler bei der Anfrage an Ollama: ${e}`);
             return { success: false, error: e && e.message ? e.message : e };
         }
-    }
-
-    async ollamaTransformText(url, payload, firstprompt) {
-        let prompt = `Convert the following TEXT into valid JSON, where 'keywords' must be a comma-separated list of individual keywords. 'title' and 'description' may only contain plain text. Output only the JSON, no explanations. Return TEXT directly if the format is already correct. Do not translate.
-        Output a JSON object in the following format (exactly this format as an example):
-        {
-        "title": "...",
-        "description": "...",
-        "keywords": "keyword1, keyword2, ...."
-        }
-        ---- TEXT ----
-        `;
-
-        prompt += firstprompt;
-        payload.prompt = prompt;
-        // remove unsed keys from object payload
-        if (payload.images) delete payload.images;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            timeout: this.timeout
-        });
-
-        if (!response.ok) return firstprompt;
-        const data = await response.json();
-        if ( !data.response ) return firstprompt;
-        let result = JSON.parse(data.response);
-        return result;
     }
 }
 
