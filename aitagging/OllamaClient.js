@@ -1,7 +1,8 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import { sanitizeString, sanitizeTxtFile, safeParseJson } from '../js/generalHelpers.js';
+import Ajv from 'ajv';
+import { sanitizeTxtFile, safeParseJson } from '../js/generalHelpers.js';
 
 class OllamaClient {
 
@@ -26,8 +27,8 @@ class OllamaClient {
         this.configPath = path.join(app.getPath('userData'), configfile);
         this.promptPath = path.join(app.getPath('userData'), promptfile);
 
-        let load1 = this.checkAndCopySettingsFiles(appRoot, this.configPath, configfile);
-        let load2 = this.checkAndCopySettingsFiles(appRoot, this.promptPath, promptfile);
+        let load1 = this.copySettingsFiles(appRoot, this.configPath, configfile);
+        let load2 = this.copySettingsFiles(appRoot, this.promptPath, promptfile);
         if (!load1 || !load2) {
             console.log("Failed to load config or prompt template. Check if the default files exist in the app's settings folder.");
             this.ollamaAvailable = false;
@@ -49,6 +50,32 @@ class OllamaClient {
         this.model = this.config.ollama.model;
         this.timeout = this.config.ollama.timeout ?? 120;
         this.generation = this.config.generation;
+        // default format for the structured ollama output
+        this.format = {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    minItems: 10,
+                    maxItems: 15
+                }
+                },
+                "required": [
+                    "title",
+                    "description",
+                    "keywords"
+                ],
+                additionalProperties: false
+        };
     }
 
     /**
@@ -57,7 +84,7 @@ class OllamaClient {
      * @param {string} settingsFilePath the full path to the user settings which are editable
      * @param {string} fileName the basename of the settings file
      */
-    checkAndCopySettingsFiles(appRoot, settingsFilePath, fileName) {
+    copySettingsFiles(appRoot, settingsFilePath, fileName) {
         // check if file exists in settingsFilePath. 
         // If not copy the default settings file from the project folder to the user folder
         const defaultSettingsPath = path.join(appRoot, 'settings', fileName);
@@ -193,7 +220,7 @@ class OllamaClient {
 
     /**
      * Checks whether Ollama is available and running with the specified model.
-     * If not running, tries to start it once with exec, but only if ollama is configured to be used and the model is specified.
+     * If not running, tries to start it once with spawn, but only if ollama is configured to be used and the model is specified.
      * Returns an object with two properties: available (boolean) and model (string or null).
      * If available is true, model is the name of the model that is currently running.
      * If available is false, model is null.
@@ -206,9 +233,11 @@ class OllamaClient {
         // if not running try to start it once with exec, but only if ollama is configured to be used and the model is specified. This allows to automatically start ollama when the user tries to use it without starting it manually first.
         if (!status && this.model) {
             const { spawn } = await import('child_process');
+            const log = fs.openSync('ollama.log', 'a');
+
             this.ollamaProcess = spawn('ollama', ['serve'], {
                 detached: true,
-                stdio: 'ignore'
+                stdio: ['ignore', log, log],
             });
 
             this.ollamaProcess.unref();
@@ -229,6 +258,22 @@ class OllamaClient {
         }
     }
 
+    /**
+     * Prepare a prompt for the Ollama AI by replacing placeholders with actual values from image metadata and geolocation.
+     * The prompt template is expected to contain the following placeholders:
+     * - DATEREPLACE: the capture date of the image in ISO format (YYYY-MM-DD).
+     * - LOCATIONREPLACE: the geolocation information of the image.
+     * - TITLEEXISTING: the title of the image.
+     * - DESCREXISTING: the description of the image.
+     * - KEYWORDSEXISTING: the keywords associated with the image.
+     * If any of the placeholders are not replaced with actual values, the corresponding lines in the prompt template are removed.
+     * @param {string} promptTemplate - The prompt template with placeholders.
+     * @param {string} captureDate - The capture date of the image in ISO format (YYYY-MM-DD).
+     * @param {object} imageMeta - The image metadata with title, description, and keywords.
+     * @param {string} geoLocationInfo - The geolocation information of the image.
+     * @returns {string} The prepared prompt with actual values instead of placeholders.
+     * 
+     */
     preparePrompt(promptTemplate, captureDate, imageMeta, geoLocationInfo) {
         
         // update the prompt template with the actual values for date and location
@@ -282,28 +327,14 @@ class OllamaClient {
     }
 
     /**
-     * Validates and sanitizes a JSON response against a schema-like format object.
-     *
-     * Supported schema subset:
-     * - type: "object" | "string" | "array" | "number" | "integer" | "boolean" | "null"
-     * - properties
-     * - required
-     * - additionalProperties
-     * - items
-     * - minItems
-     * - maxItems
-     *
-     * @param {string} input
-     * @param {object} format
-     * @param {{ extractJson?: boolean }} [options]
-     * @returns {object | null}
+     * Validates and sanitizes a JSON  response against a schema-like format object.
+     * 
+     * @param {string} input - The JSON string to validate and sanitize.
+     * @param {object} format - The format to validate against.
+     * @returns {object|null} The validated and sanitized JSON object, or null if validation fails.
      */
-    validateAndSanitizeMetadataJSON(input, format, options = {}) {
-        const { extractJson = true } = options;
-
-        if (typeof input !== "string") {
-            return null;
-        }
+    validateAndSanitizeMetadataJSON(input, format) {
+        if (typeof input !== "string") return null;
 
         if (
             !format ||
@@ -316,181 +347,28 @@ class OllamaClient {
         ) {
             return null;
         }
+        // instanciate ajv on every call, because we might have changed the format in the meantime
+        const ajv = new Ajv({
+            allErrors: true,
+            removeAdditional: true,
+            useDefaults: false,
+            coerceTypes: false,
+        });
+
+        const validate = ajv.compile(format);
 
         let jsonText = input.trim();
+        jsonText = this.extractJsonFromResponse(jsonText);
+        if (!jsonText) return null;
 
-        if (extractJson) {
-            jsonText = this.extractJsonFromResponse(jsonText);
-            if (jsonText === null) {
-                return null;
-            }
-        }
+        let data;
+        data = safeParseJson(jsonText);
 
-        let parsed;
-        try {
-            parsed = JSON.parse(jsonText);
-        } catch {
-            return null;
-        }
+        const ok = validate(data);
+        if (!ok) return null;
 
-        return this.validateBySchema(parsed, format);
-    }
-
-    /**
-     * Validates a value recursively against a schema-like definition
-     * and returns a sanitized clone, or null on failure.
-     *
-     * @param {*} value
-     * @param {object} schema
-     * @returns {* | null}
-     */
-    validateBySchema(value, schema) {
-        if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-            return null;
-        }
-
-        switch (schema.type) {
-            case "object":
-                return this.validateObject(value, schema);
-
-            case "string":
-                if (typeof value !== "string") {
-                    return null;
-                }
-                return sanitizeString(value);
-
-            case "number":
-                if (typeof value !== "number" || !Number.isFinite(value)) {
-                    return null;
-                }
-                return value;
-
-            case "integer":
-                if (!Number.isInteger(value)) {
-                    return null;
-                }
-                return value;
-
-            case "boolean":
-                if (typeof value !== "boolean") {
-                    return null;
-                }
-                return value;
-
-            case "null":
-                return value === null ? null : null;
-
-            case "array":
-                return this.validateArray(value, schema);
-
-            default:
-                return null;
-        }
-    }
-
-    /**
-     * @param {*} value
-     * @param {object} schema
-     * @returns {object | null}
-     */
-    validateObject(value, schema) {
-        if (
-            typeof value !== "object" ||
-            value === null ||
-            Array.isArray(value)
-        ) {
-            return null;
-        }
-
-        // Prototype pollution protection: allow only plain objects
-        if (Object.getPrototypeOf(value) !== Object.prototype) {
-            return null;
-        }
-
-        const properties = schema.properties || {};
-        const required = Array.isArray(schema.required) ? schema.required : [];
-        const additionalProperties = schema.additionalProperties === true;
-
-        const keys = Object.keys(value);
-
-        // Required fields must exist
-        for (const key of required) {
-            if (!Object.prototype.hasOwnProperty.call(value, key)) {
-                return null;
-            }
-        }
-
-        // Reject unknown fields unless explicitly allowed
-        if (!additionalProperties) {
-            for (const key of keys) {
-                if (!Object.prototype.hasOwnProperty.call(properties, key)) {
-                    return null;
-                }
-            }
-        }
-
-        const sanitized = Object.create(null);
-
-        // Validate only declared properties
-        for (const [key, propertySchema] of Object.entries(properties)) {
-            if (!Object.prototype.hasOwnProperty.call(value, key)) {
-                continue; // optional field
-            }
-
-            const validated = this.validateBySchema(value[key], propertySchema);
-            if (validated === null && propertySchema.type !== "null") {
-                return null;
-            }
-
-            sanitized[key] = validated;
-        }
-
-        // If additionalProperties=true and you want to preserve them,
-        // you'd need extra logic here. Right now they are ignored unless false.
-        // For strict metadata handling this is usually preferable.
-        return sanitized;
-    }
-
-    /**
-     * @param {*} value
-     * @param {object} schema
-     * @returns {Array | null}
-     */
-    validateArray(value, schema) {
-        if (!Array.isArray(value)) {
-            return null;
-        }
-
-        if (
-            typeof schema.minItems === "number" &&
-            value.length < schema.minItems
-        ) {
-            return null;
-        }
-
-        if (
-            typeof schema.maxItems === "number" &&
-            value.length > schema.maxItems
-        ) {
-            return null;
-        }
-
-        const itemSchema = schema.items;
-        if (!itemSchema || typeof itemSchema !== "object") {
-            return null;
-        }
-
-        const sanitized = [];
-
-        for (const item of value) {
-            const validated = this.validateBySchema(item, itemSchema);
-            if (validated === null && itemSchema.type !== "null") {
-                return null;
-            }
-            sanitized.push(validated);
-        }
-
-        return sanitized;
+        return data;
+        
     }
 
     /**
@@ -584,42 +462,15 @@ class OllamaClient {
         }
 
         if ( this.config.generation.format ) {
-            format = this.config.generation.format;
-        } else {
-            format = {
-            "type": "object",
-            "properties": {
-                "title": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "keywords": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    minItems: 10,
-                    maxItems: 15
-                }
-                },
-                "required": [
-                    "title",
-                    "description",
-                    "keywords"
-                ],
-                additionalProperties: false
-            }
+            this.format = this.config.generation.format;
         }
-        
 
         const payload = {
             model: this.model,
             prompt: prompt,
             // suffix: '',
             images: [encodedImage],
-            format: format,
+            format: this.format,
             options: {
                 temperature: this.config.generation.temperature ?? 0.1,
                 top_p: this.config.generation.top_p ?? 0.8,
@@ -653,7 +504,7 @@ class OllamaClient {
             if (data.response) {
                 // sanitize the response data to a valid JSON.
                 console.log("Antwort von Ollama: ", data.response);
-                let sanitizedData = this.validateAndSanitizeMetadataJSON(data.response, format, { extractJson: true });
+                let sanitizedData = this.validateAndSanitizeMetadataJSON(data.response, this.format, { extractJson: true });
                 if (sanitizedData.keywords) {
                     sanitizedData.keywords = sanitizedData.keywords.join(', ');
                 }

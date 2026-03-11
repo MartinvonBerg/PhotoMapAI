@@ -3,6 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import { safeParseJson } from './generalHelpers';
 
 /**
  * Loads user settings from a JSON file.
@@ -25,7 +26,7 @@ export function loadSettings(appRoot, settingsFilePath) {
   }
 
   try {  
-    return JSON.parse(fs.readFileSync(settingsFilePath, 'utf8'));  
+    return safeParseJson( fs.readFileSync(settingsFilePath, 'utf8') );
   } catch (error) {
     return {};
   }  

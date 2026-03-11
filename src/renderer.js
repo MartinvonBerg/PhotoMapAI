@@ -1533,8 +1533,9 @@ function genAIButtonListener(element) {
         image.Geolocation = result.location || null;
         //triggerUpdateThumbnailStatus(image.index, image.status); 
         
-        // save the AI generated metadata to the images and update the UI
-        const selectedImages = indexArray.map(index => imagesToSave[index]);
+        // save the AI generated metadata to the currently selected images and update the UI
+        let selectedImages = [];
+        selectedImages.push(image);
         result = await window.myAPI.invoke('save-meta-to-image', selectedImages);
 
         // If the IPC call returned a non-success result, throw to reach the catch block
@@ -1545,7 +1546,7 @@ function genAIButtonListener(element) {
 
         console.log('saved AI generated metadata with result:', result);
         setTrackLogState('write-meta-status', 'AI metadata saved to images!');
-        window.myAPI.send('main-reload-data', settings, indexArray[0]);
+        //window.myAPI.send('main-reload-data', settings, indexArray[0]);
 
       } catch (err) {
         console.log(`Error generating AI metadata for ${image.imagePath}:`, err);
@@ -1554,6 +1555,7 @@ function genAIButtonListener(element) {
         break;
       }
     }
+    window.myAPI.send('main-reload-data', settings, indexArray[0]);
   });
 };
 

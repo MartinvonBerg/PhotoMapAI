@@ -36,6 +36,11 @@ function getIdenticalValuesForKeysInImages(images, indexes, keys, multipleValue)
     return result;  
 } 
 
+/**
+ * Normalize tags by splitting them by comma, trimming whitespace, removing empty entries, deduplicating them and joining them again with a comma and a space.
+ * @param {string} input - the input string to normalize
+ * @returns {string} normalizedTags - the normalized string of tags
+ */
 function normalizeTags(input) {
   return [...new Set(
     input
@@ -207,6 +212,12 @@ function sanitizeTxtFile(raw, opts = {}) {
   return sanitize(s);
 }
 
+/**
+ * Normalizes a given file string by removing UTF-8 BOM, NUL bytes, and most C0-Control characters while preserving tabs, newlines, and carriage returns.
+ * Also normalizes newlines by replacing all occurrences of \r\n with just \n.
+ * @param {string|null} input The file string to be normalized.
+ * @returns {string} The normalized file string.
+ */
 function normalizeFileString(input) {
   if (input == null) return "";
   let s = String(input);
@@ -226,29 +237,48 @@ function normalizeFileString(input) {
   return s;
 }
 
+/**
+ * Safely parse a JSON string.
+ * Removes potentially dangerous keys __proto__, prototype, or constructor
+ * from the parsed object to prevent prototype pollution attacks.
+ * @param {string} raw - the JSON string to parse
+ * @returns {object} the parsed JSON object
+ */
 function safeParseJson(raw) {
-
   const DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
   const s = normalizeFileString(raw);
 
-  const data = JSON.parse(s);
+  return JSON.parse(s, function (key, value) {
+    // Gefährliche Keys verwerfen
+    if (DANGEROUS_KEYS.has(key)) {
+      return undefined;
+    }
 
-  // Rekursiv gefährliche Keys entfernen
-  const scrub = (value) => {
-    if (Array.isArray(value)) return value.map(scrub);
+    // Strings sanitizen
+    if (typeof value === "string") {
+      return sanitizeString(value);
+    }
+
+    // Arrays rekursiv übernehmen
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    // Objekte auf null-prototype umkopieren
     if (value && typeof value === "object") {
-      for (const k of Object.keys(value)) {
-        if (DANGEROUS_KEYS.has(k)) {
-          delete value[k];
-        } else {
-          value[k] = scrub(value[k]);
+      const clean = Object.create(null);
+
+      for (const [k, v] of Object.entries(value)) {
+        if (!DANGEROUS_KEYS.has(k)) {
+          clean[k] = v;
         }
       }
-    }
-    return value;
-  };
 
-  return scrub(data);
+      return clean;
+    }
+
+    return value;
+  });
 }
 
 /**

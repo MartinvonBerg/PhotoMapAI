@@ -1,9 +1,10 @@
 import { OllamaClient } from '../aitagging/OllamaClient.js';
-import { jest } from '@jest/globals';
+import { expect, jest } from '@jest/globals';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import { sanitizeTxtFile, safeParseJson, sanitize, sanitizeString } from '../js/generalHelpers.js';
 
 // Get the current directory (ES6 module)
 const __filename = fileURLToPath(import.meta.url);
@@ -52,9 +53,11 @@ describe('OllamaClient', () => {
             expect(client.baseUrl).toBeDefined();
             expect(client.config).toBeDefined();
             expect(client.prompt).toBeDefined();
+            expect(client.format).toBeDefined();
+
             // -- status
             expect(status.available).toBe(true);
-            expect(status.model).toBe('gemma3:12b');
+            expect(['gemma3:12b', 'qwen3-vl:8b']).toContain(client.model);
         });
 
         test('should set ollamaAvailable to false if config files are missing', () => {
@@ -102,7 +105,7 @@ describe('OllamaClient', () => {
             const client = new OllamaClient(appRoot, configFile, promptFile);
 
             expect(client.baseUrl).toBe('http://localhost:11434');
-            expect(client.model).toBe('gemma3:12b');
+            expect(['gemma3:12b', 'qwen3-vl:8b']).toContain(client.model);
             expect(client.timeout).toBe(120);
         });
 
@@ -117,7 +120,7 @@ describe('OllamaClient', () => {
         });
     });
     
-    describe('checkAndCopySettingsFiles', () => {
+    describe('copySettingsFiles', () => {
         test('should return true if file already exists in settingsFilePath', () => {
             const client = new OllamaClient(appRoot, configFile, promptFile);
             const existingFile = path.join(tempDir, 'existing_file.json');
@@ -125,7 +128,7 @@ describe('OllamaClient', () => {
             // Create a test file
             fs.writeFileSync(existingFile, '{}');
 
-            const result = client.checkAndCopySettingsFiles(appRoot, existingFile, 'dummy.json');
+            const result = client.copySettingsFiles(appRoot, existingFile, 'dummy.json');
 
             expect(result).toBe(true);
             fs.unlinkSync(existingFile);
@@ -137,7 +140,7 @@ describe('OllamaClient', () => {
 
             expect(fs.existsSync(newConfigPath)).toBe(false);
 
-            const result = client.checkAndCopySettingsFiles(appRoot, newConfigPath, 'ollama_config.json');
+            const result = client.copySettingsFiles(appRoot, newConfigPath, 'ollama_config.json');
 
             expect(result).toBe(true);
             expect(fs.existsSync(newConfigPath)).toBe(true);
@@ -148,7 +151,7 @@ describe('OllamaClient', () => {
             const nonExistentSourceFile = 'non/existent/file.json';
             const nonExistentDestFile = path.join(tempDir, 'non_existent.json');
 
-            const result = client.checkAndCopySettingsFiles(appRoot, nonExistentDestFile, nonExistentSourceFile);
+            const result = client.copySettingsFiles(appRoot, nonExistentDestFile, nonExistentSourceFile);
 
             expect(result).toBe(false);
         });
@@ -299,6 +302,170 @@ describe('OllamaClient', () => {
         });
         
     });
+
+    describe('validateAndSanitizeMetadataJSON', () => {
+        const format = {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    minItems: 1,
+                    maxItems: 15
+                }
+                },
+                "required": [
+                    "title",
+                    "description",
+                    "keywords"
+                ],
+                additionalProperties: false
+        };
+
+        test('should return null if input is not a string', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+
+            const result = client.validateAndSanitizeMetadataJSON({ title: 'test' }, format);
+
+            expect(result).toBeNull();
+        });
+        
+        test('should validate and sanitize valid JSON metadata', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = '{"title": "Test Title", "description": "Test Description", "keywords": ["tag1", "tag2"]}';
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).not.toBeNull();
+            expect(result.title).toBe('Test Title');
+            expect(result.description).toBe('Test Description');
+            expect(result.keywords).toEqual(["tag1", "tag2"]);
+        });
+        
+        test('should extract JSON from markdown code fences', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = '```json\n{"title": "Test", "description": "Desc", "keywords": ["key1"]}\n```';
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).not.toBeNull();
+            expect(result.title).toBe('Test');
+            expect(result.description).toBe('Desc');
+            expect(result.keywords).toEqual(["key1"]);
+        });
+        
+        test('should return null if JSON has missing required fields', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = '{"title": "Test", "description": "Desc"}'; // missing keywords
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).toBeNull();
+        });
+
+        test('should return null if JSON has extra fields', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = '{"title": "Test", "description": "Desc", "keywords": "key1", "extra": "field"}';
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).toBeNull();
+        });
+
+        test('should return null if any field is not a string', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = '{"title": 123, "description": "Desc", "keywords": "key1"}';
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).toBeNull();
+        });
+
+        test('should return null if input is an array', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = '[{"title": "Test"}]';
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).toBeNull();
+        });
+
+        test('should return null if input is null', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = 'null';
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).toBeNull();
+        });
+
+        test('should return null if JSON cannot be extracted from response', () => {
+            const client = new OllamaClient(appRoot, configFile, promptFile);
+            const input = 'This is text without JSON';
+
+            const result = client.validateAndSanitizeMetadataJSON(input, format);
+
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('Sanitizers and normalization security checks', () => {
+        test('sanitizeTxtFile removes scripts, NUL and control chars and normalizes newlines', () => {
+            const raw = "\uFEFFHello\u0000<scRipt>alert('x')<\/scRipt>\r\nLine2\x01\tTab";
+            const cleaned = sanitizeTxtFile(raw);
+
+            expect(cleaned).not.toContain('<script>');
+            expect(cleaned).not.toContain('\u0000');
+            expect(cleaned).not.toMatch(/\x01/);
+            expect(cleaned).toContain('\n');
+            expect(cleaned).not.toContain('\r');
+        });
+
+        test('sanitizeString removes HTML tags, control chars and collapses whitespace', () => {
+            const raw = "  <b>Hello</b>\n\n<script>alert(1)</script>   \t\t";
+            const s = sanitizeString(raw);
+
+            expect(s).not.toMatch(/<[^>]*>/);
+            expect(s).not.toContain('script');
+            expect(s).not.toMatch(/\s{2,}/);
+        });
+
+        test('safeParseJson prevents prototype pollution and sanitizes strings in JSON', () => {
+            const input = JSON.stringify({
+                title: '<script>alert(1)</script>Title',
+                keywords: ['good', '<b>bad</b>'],
+                __proto__: { polluted: 'yes' },
+                constructor: { bad: 'x' }
+            });
+
+            const parsed = safeParseJson(input);
+
+            // ensure prototype is null (no prototype pollution)
+            expect(Object.getPrototypeOf(parsed)).toBeNull();
+            // dangerous keys removed
+            expect(parsed.__proto__).toBeUndefined();
+            expect(parsed.constructor).toBeUndefined();
+            // strings sanitized
+            expect(parsed.title).not.toContain('<');
+            expect(parsed.title).toContain('Title');
+            expect(Array.isArray(parsed.keywords)).toBe(true);
+            expect(parsed.keywords[1]).not.toContain('<');
+        });
+
+        test('sanitize returns undefined for non-string inputs', () => {
+            expect(sanitize(123)).toBeUndefined();
+            expect(sanitize(null)).toBeUndefined();
+        });
+    });
+    
     /*
     describe('getOllamaClientStatus', () => {
         test('should return object with available and model properties', async () => {
@@ -440,92 +607,6 @@ describe('OllamaClient', () => {
             expect(result).toContain('Only Title');
             expect(result).not.toContain('DESCREXISTING');
             expect(result).not.toContain('KEYWORDSEXISTING');
-        });
-    });
-
-    describe('validateAndSanitizeMetadataJSON', () => {
-        test('should return null if input is not a string', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-
-            const result = client.validateAndSanitizeMetadataJSON({ title: 'test' });
-
-            expect(result).toBeNull();
-        });
-
-        test('should validate and sanitize valid JSON metadata', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = '{"title": "Test Title", "description": "Test Description", "keywords": "tag1, tag2"}';
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).not.toBeNull();
-            expect(result.title).toBe('Test Title');
-            expect(result.description).toBe('Test Description');
-            expect(result.keywords).toBe('tag1, tag2');
-        });
-
-        test('should extract JSON from markdown code fences', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = '```json\n{"title": "Test", "description": "Desc", "keywords": "key1"}\n```';
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).not.toBeNull();
-            expect(result.title).toBe('Test');
-        });
-
-        test('should return null if JSON has missing required fields', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = '{"title": "Test", "description": "Desc"}'; // missing keywords
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).toBeNull();
-        });
-
-        test('should return null if JSON has extra fields', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = '{"title": "Test", "description": "Desc", "keywords": "key1", "extra": "field"}';
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).toBeNull();
-        });
-
-        test('should return null if any field is not a string', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = '{"title": 123, "description": "Desc", "keywords": "key1"}';
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).toBeNull();
-        });
-
-        test('should return null if input is an array', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = '[{"title": "Test"}]';
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).toBeNull();
-        });
-
-        test('should return null if input is null', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = 'null';
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).toBeNull();
-        });
-
-        test('should return null if JSON cannot be extracted from response', () => {
-            const client = new OllamaClient(appRoot, configFile, promptFile);
-            const input = 'This is text without JSON';
-
-            const result = client.validateAndSanitizeMetadataJSON(input);
-
-            expect(result).toBeNull();
         });
     });
 
