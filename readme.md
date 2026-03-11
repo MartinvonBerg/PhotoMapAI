@@ -25,7 +25,7 @@ Supported image formats:
 
 1. Download the latest **Windows release** (Sorry, none for MAC and Linux)
 2. Unzip the archive
-3. Run
+3. Run (the first chosen App Name is used for the *.exe)
 
 ```
 GpxTaggerApp.exe
