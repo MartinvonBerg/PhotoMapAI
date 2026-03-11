@@ -13,7 +13,8 @@
     "jpg",
     "webp",
     "avif",
-    "heic"
+    "heic",
+    "tiff"
   ],
   "map": {
     "ngpxfiles": 1,
