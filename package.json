@@ -34,7 +34,7 @@
     "exiftool-vendored": "^35.9.0",
     "geo-tz": "^8.1.4",
     "i18next": "^25.8.9",
-    "i18next-fs-backend": "^2.6.0",
+    "i18next-fs-backend": "^2.6.4",
     "jest": "^30.2.0",
     "leaflet": "^1.9.4",
     "leaflet-control-geocoder": "^3.3.1",
