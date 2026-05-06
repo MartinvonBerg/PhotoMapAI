@@ -31,7 +31,7 @@
     "css-loader": "^7.1.4",
     "electron": "^41.x.x",
     "electron-rebuild": "^3.2.9",
-    "exiftool-vendored": "^35.9.0",
+    "exiftool-vendored": "^35.19.0",
     "geo-tz": "^8.1.4",
     "i18next": "^25.8.9",
     "i18next-fs-backend": "^2.6.0",
@@ -47,7 +47,7 @@
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
-    "exiftool-vendored": "^35.9.0",
+    "exiftool-vendored": "^35.19.0",
     "sharp": "^0.34.5"
   }
 }
