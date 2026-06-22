@@ -378,9 +378,10 @@ function mainRenderer (window, document, customDocument=null, win=null, vars=nul
 /** show the image filters in the left sidebar
  * 
  * @param {Array} includedExts like ['*.jpg', '*.png', '*.jpeg', '*.CR3']
- * @param {Array} cameraModels
+ * @param {Array} cameraModels like ['Canon EOS 80D', 'iPhone 12 Pro', 'DJI Mini 2']
  * @param {string} minDate a string in the locale format, e.g. 'YYYY-MM-DD' or 'DD-MM-YYYY'.
  * @param {string} maxDate a string in the locale format, e.g. 'YYYY-MM-DD' or 'DD-MM-YYYY'.
+ * @param {Object} settings is the global settings object which is updated by this function when the filters are changed.
  * @returns {void}
  */
 function showImageFilters(includedExts, cameraModels, minDate, maxDate, settings) {
@@ -425,6 +426,9 @@ function showImageFilters(includedExts, cameraModels, minDate, maxDate, settings
   const camOptions = ['all', ...cameraModels];
   const camTranslation = { all: i18next.t('all') }; // nur 'all' übersetzen
   const camSelect = createSelect(camOptions, settings.cameraModels || 'all', 'camera-filter', i18next.t('cameraModel'), camTranslation);
+
+  // Filter für Aufnahmedatum der Bilder.
+
 
   // Date-Filter (Checkbox)
   const dateFilterChecked = settings.ignoreGPXDate === 'true' ? 'checked' : '';

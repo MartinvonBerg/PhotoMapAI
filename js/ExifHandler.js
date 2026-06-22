@@ -35,6 +35,18 @@ function exifDateTimeToJSTime(dt) {
   return dateObj.toLocaleTimeString() + ' ' + dt.zoneName;
 }
 
+function exifDateToISODate(dt) {
+  if (!dt || typeof dt !== 'object' || dt.year == null || dt.month == null || dt.day == null) {
+    return '';
+  }
+
+  const year = String(dt.year).padStart(4, '0');
+  const month = String(dt.month).padStart(2, '0');
+  const day = String(dt.day).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Calculates the mean and standard deviation of a set of timestamps.
  * Also returns the date if the max deviation is less than 24h.

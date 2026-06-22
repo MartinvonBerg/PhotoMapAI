@@ -91,10 +91,15 @@ try {
 
 // sharp availabability check
 let sharpAvailable = false;
+let supportedInputFormats = [];
 let sharp;
 try {
   sharp = (await import('sharp')).default;
   sharpAvailable = true;
+  supportedInputFormats = Object.keys(sharp.format).filter((f) => sharp.format[f].input);
+  // replace 'jpeg' with 'jpg' for compatibility with exiftool and the extensions array
+  supportedInputFormats = supportedInputFormats.map(format => format === 'jpeg' ? 'jpg' : format);
+  console.log('Sharp available, supported input formats:', supportedInputFormats);
 } catch (err) {
   // das logging funktioniert hier nicht
   console.log('[WARN] Sharp not available, skipping thumbnail rotation: ', err);
@@ -689,45 +694,67 @@ async function readImagesFromFolder(folderPath, extensions) {
             return extensions.includes(ext);  
         });
   
-        // Define a function to extract required EXIF metadata. 
+        // Define a function to extract required EXIF metadata and generate thumbnail for a single image file. 
         const getExifData = async (filePath) => {
-          const metadata = await exiftool.read(filePath, { ignoreMinorErrors: true });
-          // metadata["State"], metadata.City, metadata.Country
+            const metadata = await exiftool.read(filePath, { ignoreMinorErrors: true });
+            
+            // Check for or generate thumbnail
             let thumbnailPath = '';
             const maxAgeDays = 14;
-            
-            //if (metadata.ThumbnailImage && metadata.ThumbnailImage.rawValue) {
-            if ( sharpAvailable ) {
-              const thumbnailPathTmp = path.join(app.getPath('temp'), `${path.basename(filePath)}_thumb.jpg`); // Security: Validate and normalize paths, then enforce a fixed base directory. Use path.resolve(base, input) and verify the result starts with base. Reject absolute paths, .. segments, and unsafe characters. Prefer allowlists for filenames.
-              let useExistingThumbnail = false;
 
-              // check if thumbnail exists and is not older than maxAgeDays. Delete if older and re-extract or keep existing
-              if (fs.existsSync(thumbnailPathTmp)) {
-                const now = Date.now();
-                const maxAgeMillis = maxAgeDays * 24 * 60 * 60 * 1000;
-                const stats = fs.statSync(thumbnailPathTmp);
+            // check if thumbnail exists and is not older than maxAgeDays. Delete if older and re-extract or keep existing
+            const thumbnailPathTmp = path.join(app.getPath('temp'), `${path.basename(filePath)}_thumb.jpg`); // Security: Validate and normalize paths, then enforce a fixed base directory. Use path.resolve(base, input) and verify the result starts with base. Reject absolute paths, .. segments, and unsafe characters. Prefer allowlists for filenames.
+            let useExistingThumbnail = false;
+            let fileExtension = path.extname(filePath).toLowerCase().replace('.', '');
 
-                if (now - stats.mtimeMs > maxAgeMillis) {
-                  fs.unlinkSync(thumbnailPathTmp);
-                } else {
-                  useExistingThumbnail = true;
-                  thumbnailPath = thumbnailPathTmp;
-                }
+            if (fs.existsSync(thumbnailPathTmp)) {
+              const now = Date.now();
+              const maxAgeMillis = maxAgeDays * 24 * 60 * 60 * 1000;
+              const stats = fs.statSync(thumbnailPathTmp);
+
+              if (now - stats.mtimeMs > maxAgeMillis) {
+                fs.unlinkSync(thumbnailPathTmp);
+              } else {
+                useExistingThumbnail = true;
+                thumbnailPath = thumbnailPathTmp;
               }
+            }
 
-              if (!useExistingThumbnail) {
-                // add a config for long edge here: get it from the config of the ollamaClient if not use a default value of 1200 px.
+            if ( !useExistingThumbnail ) {
+              // check for supported files for sharp : e.g. cr3 is not supported
+              let fileSupportedBySharp = supportedInputFormats.includes(fileExtension);
+
+              if ( sharpAvailable && fileSupportedBySharp) {
+                // TBD : add a config for long edge here: get it from the config of the ollamaClient if not use a default value of 1200 px.
                 // TODO : problem is that other LLM may need other sizes and we need to handle this. So we chose a bit bigger than required for gemma3:12b.
                 let longEdge = 1200;
                 if ( ollamaClient  ) {
                   longEdge = ollamaClient.getPreferredLongEdge();
                 }
                 thumbnailPath = await resizeImage( metadata, filePath, thumbnailPathTmp, { longEdge: longEdge });
-                if ( !thumbnailPath) thumbnailPath = filePath;
+                if (!thumbnailPath) thumbnailPath = filePath;
+                
+              } 
+              else if (!sharpAvailable || !fileSupportedBySharp) {
+                // use the former exiftool extraction for the thumbnail.
+                // extract new thumbnail
+                try {
+                  await exiftool.extractThumbnail(filePath, thumbnailPathTmp);
+                } catch (err) {
+                  console.error('Error extracting thumbnail with exiftool for', filePath, err);
+                  thumbnailPath = filePath; // fallback to the file path if no thumbnail is available
+                }
+                // rotate thumbnail
+                try {
+                  thumbnailPath = await rotateThumbnail(metadata, filePath, thumbnailPathTmp);
+                } catch (err) {
+                  console.error('Error rotating thumbnail with sharp for', filePath, err);
+                  thumbnailPath = filePath; // fallback to the file path if no thumbnail is available
+                }
+              } 
+              else {
+                thumbnailPath = filePath; // fallback to the file path if no thumbnail is available
               }
-              
-            } else {
-              thumbnailPath = filePath; // fallback to the file path if no thumbnail is available
             }
 
             // merge the geo location info to a single field for easier handling in the frontend and also for the AI tagging. Security: Be cautious when merging and displaying location information to prevent potential privacy issues. Consider allowing users to opt-out of sharing or displaying detailed location data.
@@ -735,9 +762,9 @@ async function readImagesFromFolder(folderPath, extensions) {
                 metadata.City,
                 metadata.State,
                 metadata.Country
-              ]
-              .filter(v => typeof v === 'string' && v.trim())
-              .join(', ') || 'unknown';
+            ]
+            .filter(v => typeof v === 'string' && v.trim())
+            .join(', ') || 'unknown';
 
             return {
                 DateTimeOriginal: metadata.DateTimeOriginal || '',
@@ -763,7 +790,7 @@ async function readImagesFromFolder(folderPath, extensions) {
                 GPSImgDirection: metadata.GPSImgDirection || '',
                 
                 file: path.basename(filePath, path.extname(filePath)),    
-                extension: path.extname(filePath).toLowerCase(),  
+                extension: '.' + fileExtension,  
                 imagePath: filePath,
                 thumbnail: thumbnailPath, // base64 encoded thumbnail or file path
                 status: (metadata.GPSLatitude && metadata.GPSLongitude) ? 'loaded-with-GPS' : 'loaded-no-GPS', // simple status field

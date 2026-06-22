@@ -233,7 +233,8 @@ class OllamaClient {
         // if not running try to start it once with exec, but only if ollama is configured to be used and the model is specified. This allows to automatically start ollama when the user tries to use it without starting it manually first.
         if (!status && this.model) {
             const { spawn } = await import('child_process');
-            const log = fs.openSync('ollama.log', 'a');
+            // generate ollama log file in user app folder and write stdout and stderr of the ollama process to this file, so we can check it for errors if ollama does not start properly.
+            const log = fs.openSync(path.join(app.getPath('userData'), 'ollama.log'), 'a');
 
             this.ollamaProcess = spawn('ollama', ['serve'], {
                 detached: true,
@@ -476,7 +477,7 @@ class OllamaClient {
                 top_p: this.config.generation.top_p ?? 0.8,
                 seed: this.config.generation.seed ?? 42,
                 top_k: this.config.generation.top_k ?? 1,
-                num_ctx: 4096
+                num_ctx: 4096 // Reduce to 3072?
             },
             // system: '',
             // template: '',
